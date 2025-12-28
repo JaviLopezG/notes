@@ -46,9 +46,8 @@ const updateUrl = (id) => {
   }
 };
 
-// Genera un color consistente para cada usuario
 const getUserColor = (uid) => {
-    if (!uid) return '#374151'; // Gray-700 default
+    if (!uid) return '#374151'; 
     let hash = 0;
     for (let i = 0; i < uid.length; i++) {
         hash = uid.charCodeAt(i) + ((hash << 5) - hash);
@@ -58,20 +57,31 @@ const getUserColor = (uid) => {
 };
 
 // --- COMPONENTE DE BLOQUE INDIVIDUAL ---
-const NoteBlock = ({ block, index, userId, isReadOnly, onUpdate, onEnter, onDelete, focusRequest }) => {
+const NoteBlock = ({ block, index, userId, isReadOnly, onUpdate, onEnter, onMergePrevious, onMergeNext, onNavigate, focusRequest }) => {
     const textareaRef = useRef(null);
     const [isFresh, setIsFresh] = useState(false);
     
-    // Si este bloque debe tener el foco (por creación o borrado)
+    // Gestión de Foco y Cursor
     useEffect(() => {
-        if (focusRequest === block.id && textareaRef.current) {
+        // focusRequest: { id, cursor: 'start' | 'end' | 'all' | number }
+        if (focusRequest && focusRequest.id === block.id && textareaRef.current) {
             textareaRef.current.focus();
-            // Si es un borrado (backspace), intentamos poner el cursor al final
-            textareaRef.current.setSelectionRange(block.text.length, block.text.length);
+            
+            const len = block.text.length;
+            if (focusRequest.cursor === 'end') {
+                textareaRef.current.setSelectionRange(len, len);
+            } else if (focusRequest.cursor === 'start') {
+                textareaRef.current.setSelectionRange(0, 0);
+            } else if (focusRequest.cursor === 'all') {
+                textareaRef.current.select();
+            } else if (typeof focusRequest.cursor === 'number') {
+                // Soporte para posición exacta (usado al unir párrafos)
+                textareaRef.current.setSelectionRange(focusRequest.cursor, focusRequest.cursor);
+            }
         }
-    }, [focusRequest, block.id, block.text.length]);
+    }, [focusRequest, block.id]); 
 
-    // Auto-resize altura
+    // Auto-resize
     useEffect(() => {
         if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
@@ -79,14 +89,12 @@ const NoteBlock = ({ block, index, userId, isReadOnly, onUpdate, onEnter, onDele
         }
     }, [block.text]);
 
-    // Lógica de "Tinta Fresca"
+    // Tinta Fresca
     useEffect(() => {
         const isMyEdit = block.lastAuthorId === userId;
         if (!isMyEdit && block.updatedAt) {
-            // Convertir Timestamp de Firestore a millis si es necesario
             const updatedTime = block.updatedAt.toMillis ? block.updatedAt.toMillis() : block.updatedAt;
             const timeSinceEdit = Date.now() - updatedTime;
-            
             if (timeSinceEdit < 7000) {
                 setIsFresh(true);
                 const timer = setTimeout(() => setIsFresh(false), 7000 - timeSinceEdit);
@@ -98,13 +106,49 @@ const NoteBlock = ({ block, index, userId, isReadOnly, onUpdate, onEnter, onDele
 
     const handleKeyDown = (e) => {
         if (isReadOnly) return;
+        
+        const { selectionStart, selectionEnd, value } = e.target;
+        const isCollapsed = selectionStart === selectionEnd;
+
+        // ENTER: Dividir bloque
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            onEnter(index);
+            const textBefore = value.slice(0, selectionStart);
+            const textAfter = value.slice(selectionEnd);
+            onEnter(index, textBefore, textAfter);
+            return;
         }
-        if (e.key === 'Backspace' && block.text === '') {
+
+        // BACKSPACE al inicio: Unir con anterior
+        if (e.key === 'Backspace' && selectionStart === 0 && isCollapsed) {
             e.preventDefault();
-            onDelete(index);
+            onMergePrevious(index);
+            return;
+        }
+
+        // DELETE (Suprimir) al final: Unir con siguiente
+        if (e.key === 'Delete' && selectionStart === value.length && isCollapsed) {
+            e.preventDefault();
+            onMergeNext(index);
+            return;
+        }
+
+        // --- NAVEGACIÓN CON FLECHAS ---
+        if (e.key === 'ArrowLeft' && selectionStart === 0 && isCollapsed) {
+            e.preventDefault();
+            onNavigate(index, 'prev');
+        }
+        if (e.key === 'ArrowRight' && selectionStart === value.length && isCollapsed) {
+            e.preventDefault();
+            onNavigate(index, 'next');
+        }
+        if (e.key === 'ArrowUp' && selectionStart === 0) {
+             e.preventDefault();
+             onNavigate(index, 'up');
+        }
+        if (e.key === 'ArrowDown' && selectionStart === value.length) {
+             e.preventDefault();
+             onNavigate(index, 'down');
         }
     };
 
@@ -112,13 +156,10 @@ const NoteBlock = ({ block, index, userId, isReadOnly, onUpdate, onEnter, onDele
 
     return (
         <div className="relative group flex items-start gap-3 transition-all">
-            {/* Indicador lateral de autor */}
             <div 
                 className={`mt-1.5 w-1 rounded-full transition-all duration-1000 ${isFresh ? 'h-5 opacity-100' : 'h-0 opacity-0'}`}
                 style={{ backgroundColor: userColor }}
             />
-            
-            {/* Tooltip de usuario */}
             {isFresh && (
                 <div className="absolute -top-5 left-0 text-[10px] text-white px-1.5 py-0.5 rounded shadow-sm opacity-80" style={{ backgroundColor: userColor }}>
                    User {block.lastAuthorId?.slice(0,4)}
@@ -149,9 +190,8 @@ export default function NoteApp() {
   const [authLoading, setAuthLoading] = useState(true);
   const [noteId, setNoteId] = useState(null);
   
-  // Datos de la nota
   const [title, setTitle] = useState('');
-  const [blocks, setBlocks] = useState([]); // [{id, text, lastAuthorId, updatedAt}]
+  const [blocks, setBlocks] = useState([]); 
   const [ownerId, setOwnerId] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   
@@ -160,16 +200,13 @@ export default function NoteApp() {
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   
-  // Control de foco
   const [focusRequest, setFocusRequest] = useState(null);
 
   const timeoutRef = useRef(null);
-  const blocksRef = useRef([]); // Ref para acceso síncrono en timers
+  const blocksRef = useRef([]);
 
-  // Mantener ref actualizada
   useEffect(() => { blocksRef.current = blocks; }, [blocks]);
 
-  // Auth
   useEffect(() => {
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -186,7 +223,6 @@ export default function NoteApp() {
     });
   }, []);
 
-  // Router
   useEffect(() => {
     if (authLoading || !user) return;
     const params = new URLSearchParams(window.location.search);
@@ -195,17 +231,10 @@ export default function NoteApp() {
     else createNewNote();
   }, [authLoading, user]);
 
-  // Create Note
   const createNewNote = async () => {
     setLoading(true);
     try {
-      const firstBlock = { 
-          id: crypto.randomUUID(), 
-          text: 'Welcome! Start typing here...', 
-          lastAuthorId: user.uid, 
-          updatedAt: Date.now() 
-      };
-      
+      const firstBlock = { id: crypto.randomUUID(), text: 'Welcome! Start typing here...', lastAuthorId: user.uid, updatedAt: Date.now() };
       const newNote = {
         title: 'Untitled Note',
         ownerId: user.uid,
@@ -225,11 +254,9 @@ export default function NoteApp() {
     }
   };
 
-  // Realtime Listener
   useEffect(() => {
     if (!noteId) return;
     setLoading(true);
-    
     const unsub = onSnapshot(doc(getNotesRef(), noteId), (snap) => {
       setLoading(false);
       if (snap.exists()) {
@@ -237,19 +264,12 @@ export default function NoteApp() {
         setTitle(data.title || '');
         setOwnerId(data.ownerId || '');
         setIsPublic(data.isPublic || false);
-        
-        // Fusión inteligente de bloques para no perder inputs locales
-        // (En esta versión simplificada, confiamos en la velocidad de Firestore y React)
-        // Solo actualizamos si hay cambios para evitar re-renders innecesarios
         if (JSON.stringify(data.blocks) !== JSON.stringify(blocksRef.current)) {
             setBlocks(data.blocks || []);
         }
         setErrorMsg('');
       } else {
-         if (!loading) { 
-             setNoteId(null);
-             createNewNote();
-         }
+         if (!loading) { setNoteId(null); createNewNote(); }
       }
     }, (err) => {
       setLoading(false);
@@ -259,15 +279,10 @@ export default function NoteApp() {
     return () => unsub();
   }, [noteId]);
 
-  // Guardado en Firestore (Centralizado)
   const saveToFirestore = useCallback((updates) => {
     setStatus('saving');
-    
-    // Si actualizamos bloques, usamos la ref para tener lo último
     const payload = { ...updates, updatedAt: serverTimestamp() };
-
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
     timeoutRef.current = setTimeout(async () => {
       if (!noteId) return;
       try {
@@ -275,55 +290,127 @@ export default function NoteApp() {
         setStatus('saved');
         setTimeout(() => setStatus('idle'), 2000);
       } catch (err) {
-        console.error(err);
         setStatus('error');
       }
-    }, 1000); // 1s debounce
+    }, 1000);
   }, [noteId]);
 
-  // Handlers de Bloques
   const handleUpdateBlock = (id, newText) => {
     const now = Date.now();
     const newBlocks = blocks.map(b => 
-        b.id === id 
-        ? { ...b, text: newText, lastAuthorId: user.uid, updatedAt: now } 
-        : b
+        b.id === id ? { ...b, text: newText, lastAuthorId: user.uid, updatedAt: now } : b
     );
     setBlocks(newBlocks);
     saveToFirestore({ blocks: newBlocks });
   };
 
-  const handleEnter = (index) => {
+  const handleEnter = (index, textBefore = null, textAfter = "") => {
     const newId = crypto.randomUUID();
+    const now = Date.now();
+    const newBlocks = [...blocks];
+
+    if (textBefore !== null) {
+        newBlocks[index] = { 
+            ...newBlocks[index], 
+            text: textBefore, 
+            lastAuthorId: user.uid, 
+            updatedAt: now 
+        };
+    }
+
     const newBlock = { 
         id: newId, 
-        text: "", 
+        text: textAfter, 
         lastAuthorId: user.uid, 
-        updatedAt: Date.now() 
+        updatedAt: now 
     };
-    const newBlocks = [...blocks];
+
     newBlocks.splice(index + 1, 0, newBlock);
-    
     setBlocks(newBlocks);
-    setFocusRequest(newId); // Solicitar foco al nuevo bloque
+    setFocusRequest({ id: newId, cursor: 'start' });
     saveToFirestore({ blocks: newBlocks });
   };
 
-  const handleDelete = (index) => {
-    if (blocks.length <= 1) return;
-    const prevBlockId = index > 0 ? blocks[index - 1].id : null;
+  // --- LÓGICA DE FUSIÓN (MERGE) ---
+  
+  // Backspace al inicio: une con el anterior
+  const handleMergePrevious = (index) => {
+    if (index <= 0) return;
+    const prevBlock = blocks[index - 1];
+    const currentBlock = blocks[index];
     
+    // El cursor debe ir al final de lo que tenía el bloque anterior
+    const prevLength = prevBlock.text.length; 
+    const newText = prevBlock.text + currentBlock.text;
+    const now = Date.now();
+
+    // Actualizamos el bloque anterior
+    const updatedPrev = { 
+        ...prevBlock, 
+        text: newText, 
+        lastAuthorId: user.uid, 
+        updatedAt: now 
+    };
+    
+    // Eliminamos el bloque actual
     const newBlocks = blocks.filter((_, i) => i !== index);
-    setBlocks(newBlocks);
+    newBlocks[index - 1] = updatedPrev;
     
-    if (prevBlockId) setFocusRequest(prevBlockId);
+    setBlocks(newBlocks);
+    setFocusRequest({ id: prevBlock.id, cursor: prevLength });
     saveToFirestore({ blocks: newBlocks });
   };
 
-  const handleTitleChange = (val) => {
-      setTitle(val);
-      saveToFirestore({ title: val });
+  // Delete al final: une con el siguiente
+  const handleMergeNext = (index) => {
+    if (index >= blocks.length - 1) return;
+    const currentBlock = blocks[index];
+    const nextBlock = blocks[index + 1];
+    
+    // El cursor se queda donde está (al final del bloque actual antes de unir)
+    const currentLength = currentBlock.text.length;
+    const newText = currentBlock.text + nextBlock.text;
+    const now = Date.now();
+
+    // Actualizamos el bloque actual
+    const updatedCurrent = { 
+        ...currentBlock, 
+        text: newText, 
+        lastAuthorId: user.uid, 
+        updatedAt: now 
+    };
+    
+    // Eliminamos el bloque siguiente
+    const newBlocks = blocks.filter((_, i) => i !== index + 1);
+    newBlocks[index] = updatedCurrent;
+    
+    setBlocks(newBlocks);
+    setFocusRequest({ id: currentBlock.id, cursor: currentLength });
+    saveToFirestore({ blocks: newBlocks });
   };
+
+  const handleNavigate = (index, direction) => {
+    let targetIndex = -1;
+    let cursorPosition = 'end';
+
+    if (direction === 'prev' || direction === 'up') {
+        if (index > 0) {
+            targetIndex = index - 1;
+            cursorPosition = 'end'; 
+        }
+    } else if (direction === 'next' || direction === 'down') {
+        if (index < blocks.length - 1) {
+            targetIndex = index + 1;
+            cursorPosition = 'start';
+        }
+    }
+
+    if (targetIndex !== -1) {
+        setFocusRequest({ id: blocks[targetIndex].id, cursor: cursorPosition });
+    }
+  };
+
+  const handleTitleChange = (val) => { setTitle(val); saveToFirestore({ title: val }); };
 
   const handleCopy = () => {
     let url = window.location.href;
@@ -393,7 +480,6 @@ export default function NoteApp() {
             </div>
         )}
 
-        {/* Título */}
         <input
             type="text"
             value={title}
@@ -403,7 +489,6 @@ export default function NoteApp() {
             className={`block w-full border-0 border-b-2 bg-transparent py-2 text-4xl font-bold tracking-tight focus:ring-0 ${!isOwner ? 'cursor-default border-transparent' : 'focus:border-indigo-600 border-transparent hover:border-gray-200'}`}
         />
 
-        {/* Editor de Bloques */}
         <div className={`min-h-[50vh] space-y-1 pb-32 ${!canEdit ? 'opacity-80' : ''}`}>
             {blocks.map((block, index) => (
                 <NoteBlock 
@@ -414,19 +499,19 @@ export default function NoteApp() {
                     isReadOnly={isReadOnly}
                     onUpdate={handleUpdateBlock}
                     onEnter={handleEnter}
-                    onDelete={handleDelete}
+                    onMergePrevious={handleMergePrevious}
+                    onMergeNext={handleMergeNext}
+                    onNavigate={handleNavigate}
                     focusRequest={focusRequest}
                 />
             ))}
             
-            {/* Zona clicable inferior para enfocar el último bloque o añadir uno */}
             {canEdit && (
                 <div 
                     className="h-32 cursor-text" 
                     onClick={() => {
-                        if (blocks.length > 0) setFocusRequest(blocks[blocks.length - 1].id);
+                        if (blocks.length > 0) setFocusRequest({ id: blocks[blocks.length - 1].id, cursor: 'end' });
                         else {
-                            // Caso raro: nota sin bloques
                             const newId = crypto.randomUUID();
                             const newBlock = { id: newId, text: "", lastAuthorId: user.uid, updatedAt: Date.now() };
                             setBlocks([newBlock]);
