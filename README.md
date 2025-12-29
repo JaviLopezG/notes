@@ -1,3 +1,24 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+## Table of Contents
+
+- [Notes](#notes)
+  - [🌟 Overview](#-overview)
+  - [✨ Key Features](#-key-features)
+  - [📸 Screenshots](#-screenshots)
+  - [🚀 Quick Start](#-quick-start)
+    - [Prerequisites](#prerequisites)
+    - [Installation](#installation)
+    - [Running the App](#running-the-app)
+  - [🛠️ Dependencies](#-dependencies)
+  - [Архитектура](#%D0%90%D1%80%D1%85%D0%B8%D1%82%D0%B5%D0%BA%D1%82%D1%83%D1%80%D0%B0)
+  - [🛣️ Roadmap](#-roadmap)
+  - [🤝 Contributing](#-contributing)
+  - [📄 License](#-license)
+  - [💖 Acknowledgements](#-acknowledgements)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 <div align="center">
   <img src="public/docs/logo.png" alt="Notes Logo" width="150">
   <h1>Notes</h1>
