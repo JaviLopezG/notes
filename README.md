@@ -27,7 +27,7 @@
     <a href="https://github.com/javilopezg/notes/actions/workflows/documentation.yml"><img src="https://github.com/javilopezg/notes/actions/workflows/documentation.yml/badge.svg" alt="Documentation"></a>
     <a href="https://github.com/javilopezg/notes/blob/main/LICENSE"><img src="https://img.shields.io/github/license/javilopezg/notes" alt="License"></a>
     <a href="https://github.com/javilopezg/notes/tags"><img src="https://img.shields.io/github/v/tag/javilopezg/notes" alt="Version"></a>
-    <a href="https://best.openssf.org/projects/gh/javilopezg/notes"><img src="https://best.openssf.org/projects/gh/javilopezg/notes/badge" alt="OpenSSF Scorecard"></a>
+    <a href="https://securityscorecards.dev/viewer/?uri=github.com/JaviLopezG/notes"><img src="https://api.securityscorecards.dev/projects/github.com/JaviLopezG/notes/badge" alt="OpenSSF Scorecard"></a>
   </div>
 </div>
 
